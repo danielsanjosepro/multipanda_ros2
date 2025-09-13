@@ -1,0 +1,20 @@
+{
+    "name": "ROS 2 Humble - Multipanda",
+    "privileged": true,
+    "remoteUser": "user",
+    "dockerComposeFile": "./docker-compose.yaml",
+    "workspaceFolder": "/home/user/humble_ws/src/multipanda_ros2",
+    "service": "multipanda_ros2_dev",
+    "features": {
+        "ghcr.io/meaningful-ooo/devcontainer-features/homebrew:2": {
+            "version": "lts",
+        },
+        "ghcr.io/devcontainers/features/node:1": {
+            "version": "lts"
+        },
+    },
+    "mounts": [
+        "source=${localWorkspaceFolder},target=/home/user/humble_ws/src/multipanda_ros2,type=bind,consistency=cached"
+    ],
+    "postCreateCommand": "/bin/bash /home/user/humble_ws/src/multipanda_ros2/.devcontainer/post_create.sh"
+}

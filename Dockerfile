@@ -3,20 +3,34 @@ FROM ros:humble
 
 ARG DEBIAN_FRONTEND=noninteractive
 
-ARG USER_UID=1001
-ARG USER_GID=1001
+# Create a non-root user
 ARG USERNAME=user
+ARG USER_UID=1000
+ARG USER_GID=$USER_UID
+ARG DEBIAN_FRONTEND=noninteractive
 
-# WORKDIR /tmp
+SHELL ["/bin/bash", "-c"]
+
+# Delete existing user if it exists
+RUN if getent passwd ${USER_UID}; then \
+    userdel -r $(getent passwd ${USER_UID} | cut -d: -f1); \
+    fi
+
+# Delete existing group if it exists
+RUN if getent group ${USER_GID}; then \
+    groupdel $(getent group ${USER_GID} | cut -d: -f1); \
+    fi
 
 RUN groupadd --gid $USER_GID $USERNAME \
-    && useradd --uid $USER_UID --gid $USER_GID -m $USERNAME \
-    #
-    # [Optional] Add sudo support. Omit if you don't need to install software after connecting.
-    && apt-get update \
-    && apt-get install -y sudo \
-    && echo $USERNAME ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/$USERNAME \
-    && chmod 0440 /etc/sudoers.d/$USERNAME
+  && useradd -s /bin/bash --uid $USER_UID --gid $USER_GID -m $USERNAME \
+  && mkdir /home/$USERNAME/.config && chown $USER_UID:$USER_GID /home/$USERNAME/.config
+
+# Set up sudo
+RUN apt-get update \
+  && apt-get install -y sudo \
+  && echo $USERNAME ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/$USERNAME\
+  && chmod 0440 /etc/sudoers.d/$USERNAME \
+  && rm -rf /var/lib/apt/lists/*
 
 # Install Eigen 3.3.9
 RUN apt-get update -y && apt-get install -y --allow-unauthenticated \
@@ -102,6 +116,7 @@ RUN apt-get update -y && apt-get install -y \
     libxcursor-dev \
     libxrandr-dev \
     libxi-dev \
+    libxkbcommon-dev \
     ninja-build \
     zlib1g-dev \
     clang-12
@@ -111,6 +126,8 @@ RUN add-apt-repository ppa:dqrobotics-dev/release && apt-get update && apt-get i
 
 # Install MuJoCo from scratch
 RUN cd ~/source_code && git clone https://github.com/google-deepmind/mujoco.git \
+    && cd mujoco \
+    && git checkout 3.2.0 \
     && mkdir ~/source_code/mujoco/build \
     && mkdir /home/user/Libraries/mujoco \
     && cd ~/source_code/mujoco/build \
@@ -119,9 +136,8 @@ RUN cd ~/source_code && git clone https://github.com/google-deepmind/mujoco.git 
     && cmake --install .
 
 
-# Now copy the contents of the repository into a new workspace
-RUN mkdir -p ~/humble_ws/src/bimanual_architecture && cd ~/humble_ws
-COPY . /home/user/humble_ws/src/bimanual_architecture/
+# Create workspace directory structure for development
+RUN mkdir -p /home/user/humble_ws/src
 
 # Set up the environment variables
 RUN echo 'source /opt/ros/humble/setup.bash' >> /home/user/.bashrc
@@ -129,21 +145,24 @@ RUN echo 'export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/user/Libraries/libfranka
 RUN echo 'export CMAKE_PREFIX_PATH=~/Libraries/libfranka/lib/cmake:~/Libraries/mujoco/lib/cmake' >> /home/user/.bashrc
 
 RUN chown -R user:user /home/user/
-# Do rosdep install and then build the packages
+
+# Clone mujoco_ros_pkgs dependency
+RUN cd /home/user/humble_ws/src \
+    && git clone https://github.com/tenfoldpaper/mujoco_ros_pkgs
+
+# Switch to user and set working directory
 USER user
 WORKDIR ~/
 SHELL ["/bin/bash", "-c"]
+
+# Update rosdep (will install package deps later in post_create)
 RUN source ~/.bashrc \
     && . /opt/ros/humble/setup.sh \
-    && cd ~/humble_ws && rosdep update \
-    && cd ~/humble_ws && rosdep install -i --from-path src --rosdistro humble -y
-# Suppresss the XDG errors when running GUI apps like RVIZ
+    && cd ~/humble_ws && rosdep update
+
+# Suppress XDG errors when running GUI apps like RVIZ
 RUN mkdir /tmp/${UID}
 RUN chown -R user:user /tmp/${UID}
 
 ENV XDG_RUNTIME_DIR=/tmp/${UID}
 ENV CMAKE_PREFIX_PATH=~/Libraries/libfranka/lib/cmake:~/Libraries/mujoco/lib/cmake
-RUN cd ~/humble_ws \
-    && source ~/.bashrc \
-    && . /opt/ros/humble/setup.sh \
-    && colcon build --cmake-args -DCMAKE_BUILD_TYPE=Release
