@@ -20,6 +20,8 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
+            'pose_stamped_to_cartesian_impedance_goal = franka_simple_publishers.pose_stamped_to_cartesian_impedance_goal:main',
+            'joint_state_to_joint_goal = franka_simple_publishers.joint_to_joing_goal:main',
         ],
     },
 )
